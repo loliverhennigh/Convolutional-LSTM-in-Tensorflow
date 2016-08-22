@@ -17,7 +17,7 @@ tf.app.flags.DEFINE_integer('hidden_size', 20,
                             """size of hidden layer""")
 tf.app.flags.DEFINE_integer('seq_length', 20,
                             """size of hidden layer""")
-tf.app.flags.DEFINE_integer('max_step', 2000,
+tf.app.flags.DEFINE_integer('max_step', 200000,
                             """max num of steps""")
 tf.app.flags.DEFINE_float('keep_prob', .5,
                             """for dropout""")
@@ -29,9 +29,6 @@ tf.app.flags.DEFINE_float('weight_init', .1,
                             """weight init for fully connected layers""")
 
 fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
-video = cv2.VideoWriter()
-success = video.open("generated_video.mov", fourcc, 4, (180, 180), True)
-print(success)
 
 def generate_bouncing_ball_sample(batch_size, seq_length, shape, num_balls):
   dat = np.zeros((batch_size, seq_length, shape, shape, 3))
@@ -105,8 +102,6 @@ def train():
         summary_str = sess.run(summary_op, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
         summary_writer.add_summary(summary_str, step) 
         print("time per batch is " + str(elapsed))
-        #cv2.imwrite("real_balls.jpg", np.uint8(dat[0, :, :, :]*255))
-        #cv2.imwrite("generated_balls.jpg", np.uint8(x_1_r[0, :, :, :]*255))
       
       assert not np.isnan(loss_r), 'Model diverged with loss = NaN'
 
@@ -115,16 +110,19 @@ def train():
         saver.save(sess, checkpoint_path, global_step=step)  
         print("saved to " + FLAGS.train_dir)
 
-    dat_gif = dat[:,:,:,:,:]
-    for i in xrange(100):
-      x_1_r = sess.run([x_1],feed_dict={x:dat_gif, keep_prob:FLAGS.keep_prob})
-      print(x_1_r[0].shape)
-      dat_gif = np.concatenate([dat_gif[:,1:,:,:,:], np.expand_dims(x_1_r[0], 1)], 1)
-      x_1_r = np.uint8(x_1_r[0][0] * 255)
-      new_im = cv2.resize(x_1_r, (180,180))
-      print(new_im.shape)
-      video.write(new_im)
-    video.release()
+        # make video
+        print("now generating video!")
+        video = cv2.VideoWriter()
+        success = video.open("generated_video.mov", fourcc, 4, (180, 180), True)
+        dat_gif = dat[:,:,:,:,:]
+        for i in xrange(50):
+          x_1_r = sess.run([x_1],feed_dict={x:dat_gif, keep_prob:FLAGS.keep_prob})
+          dat_gif = np.concatenate([dat_gif[:,1:,:,:,:], np.expand_dims(x_1_r[0], 1)], 1)
+          x_1_r = np.uint8(np.maximum(x_1_r[0][0], 0) * 255)
+          new_im = cv2.resize(x_1_r, (180,180))
+          video.write(new_im)
+        video.release()
+
 
 def main(argv=None):  # pylint: disable=unused-argument
   if tf.gfile.Exists(FLAGS.train_dir):
