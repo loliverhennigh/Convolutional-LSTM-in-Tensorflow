@@ -17,20 +17,21 @@ tf.app.flags.DEFINE_integer('hidden_size', 20,
                             """size of hidden layer""")
 tf.app.flags.DEFINE_integer('seq_length', 20,
                             """size of hidden layer""")
-tf.app.flags.DEFINE_integer('max_step', 50000,
+tf.app.flags.DEFINE_integer('max_step', 2000,
                             """max num of steps""")
 tf.app.flags.DEFINE_float('keep_prob', .5,
                             """for dropout""")
 tf.app.flags.DEFINE_float('lr', .001,
                             """for dropout""")
-tf.app.flags.DEFINE_integer('batch_size', 128,
+tf.app.flags.DEFINE_integer('batch_size', 64,
                             """batch size for training""")
 tf.app.flags.DEFINE_float('weight_init', .1,
                             """weight init for fully connected layers""")
 
 fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
 video = cv2.VideoWriter()
-success = video.open("generated_video", fourcc, 4, (180, 180), True)
+success = video.open("generated_video.mov", fourcc, 4, (180, 180), True)
+print(success)
 
 def generate_bouncing_ball_sample(batch_size, seq_length, shape, num_balls):
   dat = np.zeros((batch_size, seq_length, shape, shape, 3))
@@ -51,7 +52,7 @@ def train():
     x_unwrap = []
     with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.001, 0.01)):
       cell = BasicConvLSTMCell.BasicConvLSTMCell([32,32], [5,5], 3)
-      state = tf.zeros(x.get_shape())
+      state = tf.zeros([FLAGS.batch_size, 32, 32, 6])
     
     x_1, new_state = cell(x[:,0,:,:,:], state)
     print(new_state.get_shape())
@@ -100,21 +101,12 @@ def train():
       elapsed = time.time() - t
       print(loss_r)
 
-      if step%100 == 0:
-        print("saving gif")
-        dat_gif = dat[0,:,:,:,:]
-        for i in xrange(40):
-          x_1_r = sess.run([x_1],feed_dict={x:dat_gif, keep_prob:FLAGS.keep_prob})
-          dat_gif = np.concatenate([dat_gif[:,1:,:,:,:], np.expand_dim(x_1_r, 0)], 1)
-          print(dat_gif.shape)
-          new_im = cv2.resize(x_1_r[0], (180,180))
-          video.write(new_im)
-
+      if step%100 == 0 and step != 0:
         summary_str = sess.run(summary_op, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
         summary_writer.add_summary(summary_str, step) 
         print("time per batch is " + str(elapsed))
-        cv2.imwrite("real_balls.jpg", np.uint8(dat[0, :, :, :]*255))
-        cv2.imwrite("generated_balls.jpg", np.uint8(x_1_r[0, :, :, :]*255))
+        #cv2.imwrite("real_balls.jpg", np.uint8(dat[0, :, :, :]*255))
+        #cv2.imwrite("generated_balls.jpg", np.uint8(x_1_r[0, :, :, :]*255))
       
       assert not np.isnan(loss_r), 'Model diverged with loss = NaN'
 
@@ -122,6 +114,16 @@ def train():
         checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=step)  
         print("saved to " + FLAGS.train_dir)
+
+    dat_gif = dat[:,:,:,:,:]
+    for i in xrange(100):
+      x_1_r = sess.run([x_1],feed_dict={x:dat_gif, keep_prob:FLAGS.keep_prob})
+      print(x_1_r[0].shape)
+      dat_gif = np.concatenate([dat_gif[:,1:,:,:,:], np.expand_dims(x_1_r[0], 1)], 1)
+      x_1_r = np.uint8(x_1_r[0][0] * 255)
+      new_im = cv2.resize(x_1_r, (180,180))
+      print(new_im.shape)
+      video.write(new_im)
     video.release()
 
 def main(argv=None):  # pylint: disable=unused-argument
