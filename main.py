@@ -7,6 +7,7 @@ import tensorflow as tf
 import cv2
 
 import bouncing_balls as b
+import layer_def as ld
 import BasicConvLSTMCell
 
 FLAGS = tf.app.flags.FLAGS
@@ -19,7 +20,7 @@ tf.app.flags.DEFINE_integer('seq_length', 20,
                             """size of hidden layer""")
 tf.app.flags.DEFINE_integer('max_step', 200000,
                             """max num of steps""")
-tf.app.flags.DEFINE_float('keep_prob', .5,
+tf.app.flags.DEFINE_float('keep_prob', .8,
                             """for dropout""")
 tf.app.flags.DEFINE_float('lr', .001,
                             """for dropout""")
@@ -44,25 +45,52 @@ def train():
 
     # possible dropout inside
     keep_prob = tf.placeholder("float")
+    x_dropout = tf.nn.dropout(x, keep_prob)
 
     # create network
     x_unwrap = []
-    with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.001, 0.01)):
-      cell = BasicConvLSTMCell.BasicConvLSTMCell([32,32], [5,5], 3)
-      state = tf.zeros([FLAGS.batch_size, 32, 32, 6])
-    
-    x_1, new_state = cell(x[:,0,:,:,:], state)
-    print(new_state.get_shape())
-    tf.get_variable_scope().reuse_variables()
-    x_unwrap.append(x_1)
-    for i in xrange(FLAGS.seq_length-2):
-      x_1, new_state = cell(x[:,i+1,:,:,:], new_state)
+    with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
+      cell = BasicConvLSTMCell.BasicConvLSTMCell([8,8], [3,3], 64)
+      state = tf.zeros([FLAGS.batch_size, 8, 8, 128])
+
+    # conv peice in
+    # conv1
+    for i in xrange(FLAGS.seq_length):
+      conv1 = ld.conv_layer(x_dropout[:,i,:,:,:], 3, 1, 32, "encode_1")
+      # conv2
+      conv2 = ld.conv_layer(conv1, 3, 2, 64, "encode_2")
+      # conv3
+      conv3 = ld.conv_layer(conv2, 3, 1, 64, "encode_3")
+      # conv4
+      conv4 = ld.conv_layer(conv3, 3, 2, 128, "encode_4")
+      # conv5
+      conv5 = ld.conv_layer(conv4, 1, 1, 64, "encode_5")
+  
+      # conv lstm cell 
+      y_1, new_state = cell(conv5, state)
+  
+      # transpose conv out
+      # conv10
+      conv10 = ld.transpose_conv_layer(y_1, 1, 1, 128, "decode_10")
+      # conv11
+      conv11 = ld.transpose_conv_layer(conv10, 3, 2, 64, "decode_11")
+      # conv12
+      conv12 = ld.transpose_conv_layer(conv11, 3, 1, 64, "decode_12")
+      # conv13
+      conv13 = ld.transpose_conv_layer(conv12, 3, 2, 32, "decode_13")
+      # conv14
+      x_1 = ld.transpose_conv_layer(conv13, 3, 1, 3, "decode_14", True) # set activation to linear
       x_unwrap.append(x_1)
+   
+      # set reuse to true after first go
+      if i == 0:
+        tf.get_variable_scope().reuse_variables()
+  
     x_unwrap = tf.pack(x_unwrap)
     x_unwrap = tf.transpose(x_unwrap, [1,0,2,3,4])
     
     # calc total loss (compare x_t to x_t+1)
-    loss = tf.nn.l2_loss(x[:,1:,:,:,:] - x_unwrap)
+    loss = tf.nn.l2_loss(x[:,1:,:,:,:] - x_unwrap[:,:FLAGS.seq_length-1,:,:,:])
     tf.scalar_summary('loss', loss)
 
     # training
@@ -116,9 +144,9 @@ def train():
         success = video.open("generated_video.mov", fourcc, 4, (180, 180), True)
         dat_gif = dat[:,:,:,:,:]
         for i in xrange(50):
-          x_1_r = sess.run([x_1],feed_dict={x:dat_gif, keep_prob:FLAGS.keep_prob})
-          dat_gif = np.concatenate([dat_gif[:,1:,:,:,:], np.expand_dims(x_1_r[0], 1)], 1)
-          x_1_r = np.uint8(np.maximum(x_1_r[0][0], 0) * 255)
+          dat_gif = sess.run([x_unwrap],feed_dict={x:dat_gif, keep_prob:FLAGS.keep_prob})
+          dat_gif = dat_gif[0]
+          x_1_r = np.uint8(np.maximum(dat_gif[0,0,:,:,:], 0) * 255)
           new_im = cv2.resize(x_1_r, (180,180))
           video.write(new_im)
         video.release()
@@ -132,7 +160,5 @@ def main(argv=None):  # pylint: disable=unused-argument
 
 if __name__ == '__main__':
   tf.app.run()
-
-
 
 
