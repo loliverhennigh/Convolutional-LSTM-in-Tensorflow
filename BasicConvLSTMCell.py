@@ -64,41 +64,19 @@ class RNNCell(object):
       a nested list or tuple (of the same structure) of `2-D` tensors with
     the shapes `[batch_size x s]` for each s in `state_size`.
     """
-    state_size = self.state_size
-    if nest.is_sequence(state_size):
-      state_size_flat = nest.flatten(state_size)
-      zeros_flat = [
-          array_ops.zeros(
-              array_ops.pack(_state_size_with_prefix(s, prefix=[batch_size])),
-              dtype=dtype)
-          for s in state_size_flat]
-      for s, z in zip(state_size_flat, zeros_flat):
-        z.set_shape(_state_size_with_prefix(s, prefix=[None]))
-      zeros = nest.pack_sequence_as(structure=state_size,
-                                    flat_sequence=zeros_flat)
-    else:
-      zeros_size = _state_size_with_prefix(state_size, prefix=[batch_size])
-      zeros = array_ops.zeros(array_ops.pack(zeros_size), dtype=dtype)
-      zeros.set_shape(_state_size_with_prefix(state_size, prefix=[None]))
-
-    return zeros
-
+    raise NotImplementedError("not implimented for conv lstm")
 
 class BasicConvLSTMCell(RNNCell):
-  """Basic LSTM recurrent network cell.
-  The implementation is based on: http://arxiv.org/abs/1409.2329.
-  We add forget_bias (default: 1) to the biases of the forget gate in order to
-  reduce the scale of forgetting in the beginning of the training.
-  It does not allow cell clipping, a projection layer, and does not
-  use peep-hole connections: it is the basic baseline.
-  For advanced models, please use the full LSTMCell that follows.
+  """Basic Conv LSTM recurrent network cell. The
   """
 
   def __init__(self, shape, filter_size, num_features, forget_bias=1.0, input_size=None,
                state_is_tuple=False, activation=tf.nn.tanh):
-    """Initialize the basic LSTM cell.
+    """Initialize the basic Conv LSTM cell.
     Args:
-      num_units: int, The number of units in the LSTM cell.
+      shape: int tuple thats the height and width of the cell
+      filter_size: int tuple thats the height and width of the filter
+      num_features: int thats the depth of the cell 
       forget_bias: float, The bias added to forget gates (see above).
       input_size: Deprecated and unused.
       state_is_tuple: If True, accepted and returned states are 2-tuples of
@@ -151,16 +129,15 @@ class BasicConvLSTMCell(RNNCell):
       return new_h, new_state
 
 def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=None):
-  """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
+  """convolution:
   Args:
-    args: a 2D Tensor or a list of 2D, batch x n, Tensors.
-    output_size: int, second dimension of W[i].
-    bias: boolean, whether to add a bias term or not.
+    args: a 4D Tensor or a list of 4D, batch x n, Tensors.
+    filter_size: int tuple of filter height and width.
+    num_features: int, number of features.
     bias_start: starting value to initialize the bias; 0 by default.
     scope: VariableScope for the created subgraph; defaults to "Linear".
   Returns:
-    A 2D Tensor with shape [batch x output_size] equal to
-    sum_i(args[i] * W[i]), where W[i]s are newly created matrices.
+    A 4D Tensor with shape [batch h w num_features]
   Raises:
     ValueError: if some of the arguments has unspecified or wrong shape.
   """
@@ -194,56 +171,4 @@ def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=No
         initializer=tf.constant_initializer(
             bias_start, dtype=dtype))
   return res + bias_term
-
-
-def _linear(args, output_size, bias, bias_start=0.0, scope=None):
-  """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
-  Args:
-    args: a 2D Tensor or a list of 2D, batch x n, Tensors.
-    output_size: int, second dimension of W[i].
-    bias: boolean, whether to add a bias term or not.
-    bias_start: starting value to initialize the bias; 0 by default.
-    scope: VariableScope for the created subgraph; defaults to "Linear".
-  Returns:
-    A 2D Tensor with shape [batch x output_size] equal to
-    sum_i(args[i] * W[i]), where W[i]s are newly created matrices.
-  Raises:
-    ValueError: if some of the arguments has unspecified or wrong shape.
-  """
-  if args is None or (nest.is_sequence(args) and not args):
-    raise ValueError("`args` must be specified")
-  if not nest.is_sequence(args):
-    args = [args]
-
-  # Calculate the total size of arguments on dimension 1.
-  total_arg_size = 0
-  shapes = [a.get_shape().as_list() for a in args]
-  for shape in shapes:
-    if len(shape) != 2:
-      raise ValueError("Linear is expecting 2D arguments: %s" % str(shapes))
-    if not shape[1]:
-      raise ValueError("Linear expects shape[1] of arguments: %s" % str(shapes))
-    else:
-      total_arg_size += shape[1]
-
-  dtype = [a.dtype for a in args][0]
-
-  # Now the computation.
-  with vs.variable_scope(scope or "Linear"):
-    matrix = vs.get_variable(
-        "Matrix", [total_arg_size, output_size], dtype=dtype)
-    if len(args) == 1:
-      res = math_ops.matmul(args[0], matrix)
-    else:
-      res = math_ops.matmul(tf.concat(1, args), matrix)
-    if not bias:
-      return res
-    bias_term = vs.get_variable(
-        "Bias", [output_size],
-        dtype=dtype,
-        initializer=init_ops.constant_initializer(
-            bias_start, dtype=dtype))
-  return res + bias_term
-
-
 
