@@ -16,7 +16,7 @@ The convolutional model generated videos such as this
 
 To accurately compare the difference between them I made a file `create_graphs.py` that shows the reconstruction error vs the future predicted step. We can see from the graph that the convolutional lstm model performs better then the convolutional model. The error was averaged over 1,200 randomly generated sequences.
 
-![Alt text](https://raw.githubusercontent.com/loliverhennigh/Convolutional-LSTM-in-Tensorflow/master/test/figs/conv_lstm_vs_conv.png "conv lstm vs conv model")
+![Alt text](https://github.com/loliverhennigh/Convolutional-LSTM-in-Tensorflow/blob/master/figs/conv_lstm_vs_conv.png "conv lstm vs conv model")
 
 
 
