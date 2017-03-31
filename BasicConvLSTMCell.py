@@ -82,11 +82,11 @@ class BasicConvLSTMCell(ConvRNNCell):
       if self._state_is_tuple:
         c, h = state
       else:
-        c, h = tf.split(3, 2, state)
+        c, h = tf.split(axis=3, num_or_size_splits=2, value=state)
       concat = _conv_linear([inputs, h], self.filter_size, self.num_features * 4, True)
 
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-      i, j, f, o = tf.split(3, 4, concat)
+      i, j, f, o = tf.split(axis=3, num_or_size_splits=4, value=concat)
 
       new_c = (c * tf.nn.sigmoid(f + self._forget_bias) + tf.nn.sigmoid(i) *
                self._activation(j))
@@ -95,7 +95,7 @@ class BasicConvLSTMCell(ConvRNNCell):
       if self._state_is_tuple:
         new_state = LSTMStateTuple(new_c, new_h)
       else:
-        new_state = tf.concat(3, [new_c, new_h])
+        new_state = tf.concat(axis=3, values=[new_c, new_h])
       return new_h, new_state
 
 def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=None):
@@ -132,7 +132,7 @@ def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=No
     if len(args) == 1:
       res = tf.nn.conv2d(args[0], matrix, strides=[1, 1, 1, 1], padding='SAME')
     else:
-      res = tf.nn.conv2d(tf.concat(3, args), matrix, strides=[1, 1, 1, 1], padding='SAME')
+      res = tf.nn.conv2d(tf.concat(axis=3, values=args), matrix, strides=[1, 1, 1, 1], padding='SAME')
     if not bias:
       return res
     bias_term = tf.get_variable(

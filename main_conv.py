@@ -78,7 +78,7 @@ def train():
         tf.get_variable_scope().reuse_variables()
 
     # pack them all together 
-    x_unwrap = tf.pack(x_unwrap)
+    x_unwrap = tf.stack(x_unwrap)
     x_unwrap = tf.transpose(x_unwrap, [1,0,2,3,4])
 
     # this part will be used for generating video
@@ -107,27 +107,27 @@ def train():
       x_unwrap_gen.append(x_1_gen)
    
     # pack them generated ones
-    x_unwrap_gen = tf.pack(x_unwrap_gen)
+    x_unwrap_gen = tf.stack(x_unwrap_gen)
     x_unwrap_gen = tf.transpose(x_unwrap_gen, [1,0,2,3,4])
 
     # calc total loss (compare x_t to x_t+1)
     loss = tf.nn.l2_loss(x[:,1:,:,:,:] - x_unwrap)
-    tf.scalar_summary('loss', loss)
+    tf.summary.scalar('loss', loss)
 
     # training
     train_op = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss)
     
     # List of all Variables
-    variables = tf.all_variables()
+    variables = tf.global_variables()
 
     # Build a saver
-    saver = tf.train.Saver(tf.all_variables())   
+    saver = tf.train.Saver(tf.global_variables())   
 
     # Summary op
-    summary_op = tf.merge_all_summaries()
+    summary_op = tf.summary.merge_all()
  
     # Build an initialization operation to run below.
-    init = tf.initialize_all_variables()
+    init = tf.global_variables_initializer()
 
     # Start running operations on the Graph.
     sess = tf.Session()
@@ -138,7 +138,7 @@ def train():
 
     # Summary op
     graph_def = sess.graph.as_graph_def(add_shapes=True)
-    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, graph_def=graph_def)
+    summary_writer = tf.summary.FileWriter(FLAGS.train_dir, graph_def=graph_def)
 
     for step in xrange(FLAGS.max_step):
       dat = generate_bouncing_ball_sample(FLAGS.batch_size, FLAGS.seq_length, 32, FLAGS.num_balls)

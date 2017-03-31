@@ -37,6 +37,39 @@ def generate_bouncing_ball_sample(batch_size, seq_length, shape, num_balls):
     dat[i, :, :, :, :] = b.bounce_vec(32, num_balls, seq_length)
   return dat 
 
+def network(inputs, hidden, lstm=True):
+  conv1 = ld.conv_layer(inputs, 3, 2, 8, "encode_1")
+  # conv2
+  conv2 = ld.conv_layer(conv1, 3, 1, 8, "encode_2")
+  # conv3
+  conv3 = ld.conv_layer(conv2, 3, 2, 8, "encode_3")
+  # conv4
+  conv4 = ld.conv_layer(conv3, 1, 1, 4, "encode_4")
+  y_0 = conv4
+  if lstm:
+    # conv lstm cell 
+    with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
+      cell = BasicConvLSTMCell.BasicConvLSTMCell([8,8], [3,3], 4)
+      if hidden is None:
+        hidden = cell.zero_state(FLAGS.batch_size, tf.float32) 
+      y_1, hidden = cell(y_0, hidden)
+  else:
+    y_1 = ld.conv_layer(y_0, 3, 1, 8, "encode_3")
+ 
+  # conv5
+  conv5 = ld.transpose_conv_layer(y_1, 1, 1, 8, "decode_5")
+  # conv6
+  conv6 = ld.transpose_conv_layer(conv5, 3, 2, 8, "decode_6")
+  # conv7
+  conv7 = ld.transpose_conv_layer(conv6, 3, 1, 8, "decode_7")
+  # x_1 
+  x_1 = ld.transpose_conv_layer(conv7, 3, 2, 3, "decode_8", True) # set activation to linear
+
+  return x_1, hidden
+
+# make a template for reuse
+network_template = tf.make_template('network', network)
+
 def train():
   """Train ring_net for a number of steps."""
   with tf.Graph().as_default():
@@ -49,95 +82,52 @@ def train():
 
     # create network
     x_unwrap = []
-    with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
-      cell = BasicConvLSTMCell.BasicConvLSTMCell([8,8], [3,3], 4)
-      new_state = cell.zero_state(FLAGS.batch_size, tf.float32) 
 
     # conv network
+    hidden = None
     for i in xrange(FLAGS.seq_length-1):
-      # conv1
       if i < FLAGS.seq_start:
-        conv1 = ld.conv_layer(x_dropout[:,i,:,:,:], 3, 2, 8, "encode_1")
+        x_1, hidden = network_template(x_dropout[:,i,:,:,:], hidden)
       else:
-        conv1 = ld.conv_layer(x_1, 3, 2, 8, "encode_1")
-      # conv2
-      conv2 = ld.conv_layer(conv1, 3, 1, 8, "encode_2")
-      # conv3
-      conv3 = ld.conv_layer(conv2, 3, 2, 8, "encode_3")
-      # conv4
-      conv4 = ld.conv_layer(conv3, 1, 1, 4, "encode_4")
-      y_0 = conv4
-      # conv lstm cell 
-      y_1, new_state = cell(y_0, new_state)
-      # conv5
-      conv5 = ld.transpose_conv_layer(y_1, 1, 1, 8, "decode_5")
-      # conv6
-      conv6 = ld.transpose_conv_layer(conv5, 3, 2, 8, "decode_6")
-      # conv7
-      conv7 = ld.transpose_conv_layer(conv6, 3, 1, 8, "decode_7")
-      # x_1 
-      x_1 = ld.transpose_conv_layer(conv7, 3, 2, 3, "decode_8", True) # set activation to linear
-      if i >= FLAGS.seq_start:
-        x_unwrap.append(x_1)
-      # set reuse to true after first go
-      if i == 0:
-        tf.get_variable_scope().reuse_variables()
+        x_1, hidden = network_template(x_1, hidden)
+      x_unwrap.append(x_1)
 
     # pack them all together 
-    x_unwrap = tf.pack(x_unwrap)
+    x_unwrap = tf.stack(x_unwrap)
     x_unwrap = tf.transpose(x_unwrap, [1,0,2,3,4])
 
     # this part will be used for generating video
-    x_unwrap_gen = []
-    new_state_gen = cell.zero_state(FLAGS.batch_size, tf.float32) 
+    x_unwrap_g = []
+    hidden_g = None
     for i in xrange(50):
-      # conv1
       if i < FLAGS.seq_start:
-        conv1 = ld.conv_layer(x[:,i,:,:,:], 3, 2, 8, "encode_1")
+        x_1_g, hidden_g = network_template(x_dropout[:,i,:,:,:], hidden_g)
       else:
-        conv1 = ld.conv_layer(x_1_gen, 3, 2, 8, "encode_1")
-      # conv2
-      conv2 = ld.conv_layer(conv1, 3, 1, 8, "encode_2")
-      # conv3
-      conv3 = ld.conv_layer(conv2, 3, 2, 8, "encode_3")
-      # conv4
-      conv4 = ld.conv_layer(conv3, 1, 1, 4, "encode_4")
-      y_0 = conv4
-      # conv lstm cell 
-      y_1, new_state_gen = cell(y_0, new_state_gen)
-      # conv5
-      conv5 = ld.transpose_conv_layer(y_1, 1, 1, 8, "decode_5")
-      # conv6
-      conv6 = ld.transpose_conv_layer(conv5, 3, 2, 8, "decode_6")
-      # conv7
-      conv7 = ld.transpose_conv_layer(conv6, 3, 1, 8, "decode_7")
-      # x_1_gen
-      x_1_gen = ld.transpose_conv_layer(conv7, 3, 2, 3, "decode_8", True) # set activation to linear
-      if i >= FLAGS.seq_start:
-        x_unwrap_gen.append(x_1_gen)
+        x_1_g, hidden_g = network_template(x_1_g, hidden_g)
+      x_unwrap_g.append(x_1_g)
 
     # pack them generated ones
-    x_unwrap_gen = tf.pack(x_unwrap_gen)
-    x_unwrap_gen = tf.transpose(x_unwrap_gen, [1,0,2,3,4])
+    x_unwrap_g = tf.stack(x_unwrap_g)
+    x_unwrap_g = tf.transpose(x_unwrap_g, [1,0,2,3,4])
 
     # calc total loss (compare x_t to x_t+1)
-    loss = tf.nn.l2_loss(x[:,FLAGS.seq_start+1:,:,:,:] - x_unwrap[:,:,:,:,:])
-    tf.scalar_summary('loss', loss)
+    loss = tf.nn.l2_loss(x[:,FLAGS.seq_start+1:,:,:,:] - x_unwrap[:,FLAGS.seq_start:,:,:,:])
+    tf.summary.scalar('loss', loss)
 
     # training
     train_op = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss)
     
     # List of all Variables
-    variables = tf.all_variables()
+    variables = tf.global_variables()
 
     # Build a saver
-    saver = tf.train.Saver(tf.all_variables())   
+    saver = tf.train.Saver(tf.global_variables())   
 
     # Summary op
-    summary_op = tf.merge_all_summaries()
+    summary_op = tf.summary.merge_all()
  
     # Build an initialization operation to run below.
-    init = tf.initialize_all_variables()
+    init = tf.global_variables_initializer()
 
     # Start running operations on the Graph.
     sess = tf.Session()
@@ -148,7 +138,7 @@ def train():
 
     # Summary op
     graph_def = sess.graph.as_graph_def(add_shapes=True)
-    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, graph_def=graph_def)
+    summary_writer = tf.summary.FileWriter(FLAGS.train_dir, graph_def=graph_def)
 
     for step in xrange(FLAGS.max_step):
       dat = generate_bouncing_ball_sample(FLAGS.batch_size, FLAGS.seq_length, 32, FLAGS.num_balls)
@@ -175,7 +165,7 @@ def train():
         video = cv2.VideoWriter()
         success = video.open("generated_conv_lstm_video.mov", fourcc, 4, (180, 180), True)
         dat_gif = dat
-        ims = sess.run([x_unwrap_gen],feed_dict={x:dat_gif, keep_prob:FLAGS.keep_prob})
+        ims = sess.run([x_unwrap_g],feed_dict={x:dat_gif, keep_prob:FLAGS.keep_prob})
         ims = ims[0][0]
         print(ims.shape)
         for i in xrange(50 - FLAGS.seq_start):
