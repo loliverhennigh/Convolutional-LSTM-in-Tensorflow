@@ -8,7 +8,7 @@ import cv2
 
 import bouncing_balls as b
 import layer_def as ld
-import BasicConvLSTMCell
+#import tf.contrib.rnn.BasicConvLSTMCell as BasicConvLSTMCell
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -49,7 +49,7 @@ def network(inputs, hidden, lstm=True):
   if lstm:
     # conv lstm cell 
     with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
-      cell = BasicConvLSTMCell.BasicConvLSTMCell([8,8], [3,3], 4)
+      cell = tf.contrib.rnn.BasicConvLSTMCell([8,8], [3,3], 4)
       if hidden is None:
         hidden = cell.zero_state(FLAGS.batch_size, tf.float32) 
       y_1, hidden = cell(y_0, hidden)
