@@ -7,7 +7,7 @@ import tensorflow as tf
 import cv2
 
 import bouncing_balls as b
-import layer_def as ld
+from model import *
 #import tf.contrib.rnn.BasicConvLSTMCell as BasicConvLSTMCell
 
 FLAGS = tf.app.flags.FLAGS
@@ -24,10 +24,12 @@ tf.app.flags.DEFINE_float('keep_prob', .8,
                             """for dropout""")
 tf.app.flags.DEFINE_float('lr', .001,
                             """for dropout""")
-tf.app.flags.DEFINE_integer('batch_size', 16,
+tf.app.flags.DEFINE_integer('batch_size', 4,
                             """batch size for training""")
 tf.app.flags.DEFINE_float('weight_init', .1,
                             """weight init for fully connected layers""")
+tf.app.flags.DEFINE_string('model', 'residual_u_network',
+                            """ model to train """)
 
 fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
 
@@ -37,50 +39,18 @@ def generate_bouncing_ball_sample(batch_size, seq_length, shape, num_balls):
     dat[i, :, :, :, :] = b.bounce_vec(32, num_balls, seq_length)
   return dat 
 
-def network(inputs, hidden, lstm=True):
-  conv1 = ld.conv_layer(inputs, 3, 2, 8, "encode_1")
-  # conv2
-  conv2 = ld.conv_layer(conv1, 3, 1, 8, "encode_2")
-  # conv3
-  conv3 = ld.conv_layer(conv2, 3, 2, 8, "encode_3")
-  # conv4
-  conv4 = ld.conv_layer(conv3, 1, 1, 4, "encode_4")
-  y_0 = conv4
-  if lstm:
-    # conv lstm cell 
-    with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
-      cell = tf.contrib.rnn.BasicConvLSTMCell([8,8], [3,3], 4)
-      if hidden is None:
-        hidden = cell.zero_state(FLAGS.batch_size, tf.float32) 
-      y_1, hidden = cell(y_0, hidden)
-  else:
-    y_1 = ld.conv_layer(y_0, 3, 1, 8, "encode_3")
- 
-  # conv5
-  conv5 = ld.transpose_conv_layer(y_1, 1, 1, 8, "decode_5")
-  # conv6
-  conv6 = ld.transpose_conv_layer(conv5, 3, 2, 8, "decode_6")
-  # conv7
-  conv7 = ld.transpose_conv_layer(conv6, 3, 1, 8, "decode_7")
-  # x_1 
-  x_1 = ld.transpose_conv_layer(conv7, 3, 2, 3, "decode_8", True) # set activation to linear
-
-  return x_1, hidden
-
-# make a template for reuse
-network_template = tf.make_template('network', network)
-
 def train():
   """Train ring_net for a number of steps."""
   with tf.Graph().as_default():
     # make inputs
-    x = tf.placeholder(tf.float32, [None, FLAGS.seq_length, 32, 32, 3])
+    x = tf.placeholder(tf.float32, [FLAGS.batch_size, FLAGS.seq_length, 32, 32, 3])
 
     # possible dropout inside
     keep_prob = tf.placeholder("float")
     x_dropout = tf.nn.dropout(x, keep_prob)
 
     # create network
+    network_template = select_network(FLAGS.model)
     x_unwrap = []
 
     # conv network
