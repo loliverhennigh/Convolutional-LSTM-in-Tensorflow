@@ -56,7 +56,6 @@ def residual_u_network(inputs, hiddens=None, start_filter_size=16, nr_downsample
   # make list of hiddens if None
   if hiddens is None:
     hiddens = (2*nr_downsamples -1)*[None]
-  print(hiddens)
 
   # store for u network connections and new hiddens
   a = []
@@ -65,7 +64,6 @@ def residual_u_network(inputs, hiddens=None, start_filter_size=16, nr_downsample
   # encoding piece
   x_i = inputs
   for i in xrange(nr_downsamples):
-    print(x_i.get_shape())
     x_i = res_block(x_i, filter_size=filter_size, nonlinearity=nonlinearity, stride=2, name="res_encode_" + str(i) + "_block_0", begin_nonlinearity=False)
     for j in xrange(nr_residual_per_downsample - 1):
       x_i = res_block(x_i, filter_size=filter_size, nonlinearity=nonlinearity, name="res_encode_" + str(i) + "_block_" + str(j+1), begin_nonlinearity=True)
@@ -80,7 +78,6 @@ def residual_u_network(inputs, hiddens=None, start_filter_size=16, nr_downsample
 
   # decoding piece
   for i in xrange(nr_downsamples - 1):
-    print(x_i.get_shape())
     filter_size = filter_size / 2
     x_i = transpose_conv_layer(x_i, 4, 2, filter_size, "up_conv_" + str(i))
     for j in xrange(nr_residual_per_downsample):
@@ -88,9 +85,7 @@ def residual_u_network(inputs, hiddens=None, start_filter_size=16, nr_downsample
     x_i, hidden_new = res_block_lstm(x_i, hiddens[i + nr_downsamples], name="res_decode_lstm_" + str(i))
     hidden_out.append(hidden_new)
 
-  print(x_i.get_shape())
   x_i = transpose_conv_layer(x_i, 4, 2, int(inputs.get_shape()[-1]), "up_conv_" + str(nr_downsamples-1))
-  print(x_i.get_shape())
 
   return x_i, hidden_out 
 
